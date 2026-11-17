@@ -116,43 +116,90 @@ function musicBox(ac: AudioContext, out: AudioNode) {
 
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
-// A sheep's "baa": a buzzy voice through vowel formants, with a little bleat flutter.
-function baa(ac: AudioContext, out: AudioNode, when: number, pitch: number) {
-  const dur = rand(0.8, 1.2);
-  const end = when + dur;
-  const voice = ac.createOscillator();
-  voice.type = 'sawtooth';
-  voice.frequency.setValueAtTime(pitch * 1.1, when);
-  voice.frequency.linearRampToValueAtTime(pitch, when + 0.15);
-  voice.frequency.linearRampToValueAtTime(pitch * 0.9, end);
+// Ewes are low and throaty; lambs are high.
+const sheepPitch = () => (Math.random() < 0.6 ? rand(190, 250) : rand(320, 420));
 
-  const flutter = ac.createGain();
-  flutter.gain.value = 0.7;
-  const flutterLfo = ac.createOscillator();
-  flutterLfo.frequency.value = rand(9, 12);
-  const flutterAmt = ac.createGain();
-  flutterAmt.gain.value = 0.3;
-  flutterLfo.connect(flutterAmt).connect(flutter.gain);
+// A sheep's "meh-eh-eh-eh": a nasal "eh" vowel that wobbles in pitch and loudness
+// together (the bleat), opening from an "m" and trailing off at the end.
+function baa(ac: AudioContext, out: AudioNode, when: number, pitch: number) {
+  const dur = rand(0.75, 1.1);
+  const end = when + dur;
+
+  // Two slightly detuned voices for a rough, organic buzz.
+  const voices = [1, 1.012].map((detune) => {
+    const osc = ac.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(pitch * 0.82 * detune, when);
+    osc.frequency.linearRampToValueAtTime(pitch * detune, when + 0.12);
+    osc.frequency.setValueAtTime(pitch * detune, end - 0.35);
+    osc.frequency.linearRampToValueAtTime(pitch * 0.8 * detune, end);
+    return osc;
+  });
+
+  // The bleat: one wobble drives both pitch (±7%) and loudness, so each pulse goes "eh".
+  const bleat = ac.createOscillator();
+  bleat.frequency.setValueAtTime(rand(6, 7.5), when);
+  bleat.frequency.linearRampToValueAtTime(rand(4.5, 5.5), end); // slows as it trails off
+  const pitchWobble = ac.createGain();
+  pitchWobble.gain.value = pitch * 0.07;
+  bleat.connect(pitchWobble);
+  voices.forEach((v) => pitchWobble.connect(v.frequency));
+
+  const pulse = ac.createGain();
+  pulse.gain.value = 0.55;
+  const pulseDepth = ac.createGain();
+  pulseDepth.gain.value = 0.45;
+  bleat.connect(pulseDepth).connect(pulse.gain);
+  voices.forEach((v) => v.connect(pulse));
+
+  // Breath: a little noise under the voice.
+  const breath = ac.createBufferSource();
+  const len = Math.ceil(ac.sampleRate * (dur + 0.1));
+  breath.buffer = ac.createBuffer(1, len, ac.sampleRate);
+  const data = breath.buffer.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  const breathGain = ac.createGain();
+  breathGain.gain.value = 0.04;
+  breath.connect(breathGain).connect(pulse);
+
+  // Mouth: closed "m" opening up, then closing again at the end.
+  const mouth = ac.createBiquadFilter();
+  mouth.type = 'lowpass';
+  mouth.Q.value = 1.5;
+  mouth.frequency.setValueAtTime(350, when);
+  mouth.frequency.exponentialRampToValueAtTime(4000, when + 0.12);
+  mouth.frequency.setValueAtTime(4000, end - 0.3);
+  mouth.frequency.exponentialRampToValueAtTime(900, end);
+
+  // Nasal "eh" vowel: formants around 600 / 1800 / 2700 Hz with a dip near 1 kHz.
+  const nasal = ac.createBiquadFilter();
+  nasal.type = 'peaking';
+  nasal.frequency.value = 1000;
+  nasal.Q.value = 2;
+  nasal.gain.value = -12;
+  pulse.connect(nasal).connect(mouth);
 
   const env = ac.createGain();
   env.gain.setValueAtTime(0, when);
-  env.gain.linearRampToValueAtTime(1, when + 0.08);
-  env.gain.setValueAtTime(1, end - 0.3);
+  env.gain.linearRampToValueAtTime(1, when + 0.06);
+  env.gain.setValueAtTime(1, end - 0.25);
   env.gain.linearRampToValueAtTime(0, end);
   env.connect(out);
 
-  voice.connect(flutter);
-  [[750, 6, 1], [1250, 8, 0.6], [2600, 10, 0.2]].forEach(([freq, q, gain]) => {
+  [[600, 5, 1], [1800, 7, 0.75], [2700, 9, 0.35]].forEach(([freq, q, gain]) => {
     const bp = ac.createBiquadFilter();
     bp.type = 'bandpass';
     bp.frequency.value = freq;
     bp.Q.value = q;
     const g = ac.createGain();
     g.gain.value = gain;
-    flutter.connect(bp).connect(g).connect(env);
+    mouth.connect(bp).connect(g).connect(env);
   });
+  const buzz = ac.createGain(); // a touch of unfiltered voice for body
+  buzz.gain.value = 0.12;
+  mouth.connect(buzz).connect(env);
 
-  [voice, flutterLfo].forEach((n) => {
+  [...voices, bleat, breath].forEach((n) => {
     n.start(when);
     n.stop(end + 0.05);
   });
@@ -251,9 +298,9 @@ function farm(ac: AudioContext, out: AudioNode) {
   });
 
   const now = ac.currentTime;
-  let nextBaa = now + rand(4, 10);
-  let nextOwl = now + rand(20, 45);
-  let nextMoo = now + rand(35, 70);
+  let nextBaa = now + rand(8, 20);
+  let nextOwl = now + rand(40, 90);
+  let nextMoo = now + rand(70, 140);
 
   const tick = () => {
     const horizon = ac.currentTime + 1;
@@ -264,17 +311,17 @@ function farm(ac: AudioContext, out: AudioNode) {
       }
     }
     if (nextBaa < horizon) {
-      baa(ac, sheepBus, nextBaa, rand(260, 360));
-      if (Math.random() < 0.35) baa(ac, sheepBus, nextBaa + rand(1.6, 2.6), rand(240, 380)); // an answer
-      nextBaa += rand(14, 35);
+      baa(ac, sheepBus, nextBaa, sheepPitch());
+      if (Math.random() < 0.35) baa(ac, sheepBus, nextBaa + rand(1.6, 2.6), sheepPitch()); // an answer
+      nextBaa += rand(28, 70);
     }
     if (nextOwl < horizon) {
       owl(ac, owlBus, nextOwl);
-      nextOwl += rand(45, 100);
+      nextOwl += rand(90, 200);
     }
     if (nextMoo < horizon) {
       moo(ac, cowBus, nextMoo);
-      nextMoo += rand(60, 130);
+      nextMoo += rand(120, 260);
     }
   };
   tick();

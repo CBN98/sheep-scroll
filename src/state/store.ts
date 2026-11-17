@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { ECONOMY } from '../config';
 import { isLucky, rollBox, type BoxResult } from '../economy/boxes';
-import { RARITY, STARTER_SKIN, type SeriesId } from '../sheep/skins';
+import { RARITY, STARTER_OWNED, STARTER_SKIN, type SeriesId } from '../sheep/skins';
 import { storage } from '../platform/storage';
 
 export type SoundMode = 'off' | 'wind' | 'dreamy' | 'lullaby';
@@ -40,7 +40,7 @@ interface State extends Progress {
 const freshProgress = (): Progress => ({
   totalSheep: 0,
   wool: ECONOMY.startingWool,
-  owned: { [STARTER_SKIN]: 1 },
+  owned: { ...STARTER_OWNED },
   equipped: STARTER_SKIN,
   pity: 0,
   lastDaily: null,
@@ -105,7 +105,12 @@ export const useStore = create<State>()(
       storage: createJSONStorage(() => storage),
       merge: (persisted, current) => {
         const p = persisted as Partial<State>;
-        return { ...current, ...p, settings: { ...current.settings, ...p.settings } };
+        return {
+          ...current,
+          ...p,
+          owned: { ...STARTER_OWNED, ...p.owned }, // starters added later still reach existing players
+          settings: { ...current.settings, ...p.settings },
+        };
       },
     },
   ),

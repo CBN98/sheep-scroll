@@ -59,6 +59,8 @@ export const STARTER_SKIN = 'classic';
 
 export const SKINS: Skin[] = [
   { id: 'classic', name: 'Classic', series: 'starter', rarity: 'common', look: { wool: '#f4efe6', face: '#3a3340' } },
+  { id: 'midnight', name: 'Midnight', series: 'starter', rarity: 'common', look: { wool: '#4a4558', face: '#e8dccb' } },
+  { id: 'honey', name: 'Honey', series: 'starter', rarity: 'common', look: { wool: '#f3d9a0', face: '#6b4a35' } },
 
   // Starlight
   { id: 'moonbeam', name: 'Moonbeam', series: 'starlight', rarity: 'common', look: { wool: '#e3dcf5', face: '#4a4266' } },
@@ -122,3 +124,8 @@ export const SKINS: Skin[] = [
 ];
 
 export const SKIN_BY_ID: Record<string, Skin> = Object.fromEntries(SKINS.map((s) => [s.id, s]));
+
+// Everyone owns the starter sheep from the beginning.
+export const STARTER_OWNED: Record<string, number> = Object.fromEntries(
+  SKINS.filter((s) => s.series === 'starter').map((s) => [s.id, 1]),
+);

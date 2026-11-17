@@ -1,0 +1,7 @@
+services:
+  doze-scroll:
+    build: .
+    container_name: doze-scroll
+    ports:
+      - "8080:80"
+    restart: unless-stopped

@@ -8,6 +8,7 @@ export interface FlockSheep {
   state: SheepState;
   number?: number; // assigned when it lifts off
   lean?: number; // -1 (left) … 1 (right): which way it drifts as it floats up
+  flung?: boolean; // thrown by hand, so it starts floating already moving
 }
 
 // Turn a swipe/fling vector into a lean. Never exactly 0, so every float has a side.
@@ -41,9 +42,9 @@ export function useFlock(pickSkin: () => string, onLaunch: () => void) {
   }, [update]);
 
   const launch = useCallback(
-    (key: number, lean: number) => {
+    (key: number, lean: number, flung = false) => {
       const number = ++launched.current;
-      update((f) => f.map((s) => (s.key === key ? { ...s, state: 'floating', number, lean } : s)));
+      update((f) => f.map((s) => (s.key === key ? { ...s, state: 'floating', number, lean, flung } : s)));
       latest.current.onLaunch();
       timers.current.push(window.setTimeout(spawn, TIMING.float * TIMING.spawnAt * 1000));
     },
@@ -64,7 +65,7 @@ export function useFlock(pickSkin: () => string, onLaunch: () => void) {
   const fling = useCallback(
     (key: number, lean: number) => {
       const sheep = flockRef.current.find((s) => s.key === key);
-      if (sheep && sheep.state !== 'floating') launch(key, lean);
+      if (sheep && sheep.state !== 'floating') launch(key, lean, true);
     },
     [launch],
   );

@@ -18,13 +18,16 @@ const HOME = { type: 'spring', stiffness: 120, damping: 9 } as const; // wobbly 
 interface FloatCustom {
   distance: number;
   lean: number;
+  flung: boolean;
 }
+
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
 const variants: Variants = {
   hidden: { opacity: 0, y: 50, scale: 0.92 },
   shown: { opacity: 1, y: 0, x: 0, scale: 1, rotate: 0, transition: { duration: TIMING.enter, ease: 'easeOut' } },
   // Wobbles toward the swipe first, settles back a little, then drifts that way as it rises.
-  float: ({ distance, lean }: FloatCustom) => ({
+  float: ({ distance, lean, flung }: FloatCustom) => ({
     y: -distance,
     x: [0, 44 * lean, 18 * lean, 34 * lean, 28 * lean],
     rotate: [0, 10 * lean, -3 * lean, 4 * lean, 0],
@@ -32,7 +35,8 @@ const variants: Variants = {
     opacity: [1, 1, 0],
     transition: {
       duration: TIMING.float,
-      ease: [0.45, 0, 0.55, 1],
+      // A thrown sheep is already moving, so its float starts at speed instead of from rest.
+      ease: flung ? [0.2, 0.4, 0.55, 1] : [0.45, 0, 0.55, 1],
       opacity: { duration: TIMING.float, times: [0, 0.55, 1] },
     },
   }),
@@ -241,7 +245,7 @@ function SheepSprite({ sheep, distance, showNumber, onGrab, onFling, onArrived, 
         variants={variants}
         initial="hidden"
         animate={floating ? 'float' : 'shown'}
-        custom={{ distance, lean: sheep.lean ?? 0 } satisfies FloatCustom}
+        custom={{ distance, lean: sheep.lean ?? 0, flung: !!sheep.flung } satisfies FloatCustom}
         onAnimationComplete={(def) => {
           if (def === 'shown') onArrived();
           if (def === 'float') onDeparted();
@@ -262,8 +266,13 @@ function SheepSprite({ sheep, distance, showNumber, onGrab, onFling, onArrived, 
           onPointerUp={(e) => !floating && e.stopPropagation()}
           onDragEnd={(_, info) => {
             if (info.offset.y < -FLING_MIN || info.velocity.y < -600) {
-              // Thrown upward: float off from right here, leaning the way it was thrown.
-              onFling(leanFrom(info.offset.x + info.velocity.x * 0.15, info.offset.y + info.velocity.y * 0.15));
+              // Thrown upward: keep the throw's momentum and glide it out, easing into the float.
+              const vy = clamp(info.velocity.y, -1600, -400);
+              const vx = clamp(info.velocity.x, -1200, 1200);
+              const glide = { type: 'inertia', power: 0.25, timeConstant: 420 } as const;
+              animate(y, y.get(), { ...glide, velocity: vy });
+              animate(x, x.get(), { ...glide, velocity: vx });
+              onFling(leanFrom(info.offset.x + vx * 0.15, info.offset.y + vy * 0.15));
             } else {
               animate(x, 0, HOME);
               animate(y, 0, HOME);

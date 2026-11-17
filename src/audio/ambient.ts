@@ -298,9 +298,9 @@ function farm(ac: AudioContext, out: AudioNode) {
   });
 
   const now = ac.currentTime;
-  let nextBaa = now + rand(8, 20);
-  let nextOwl = now + rand(40, 90);
-  let nextMoo = now + rand(70, 140);
+  let nextBaa = now + rand(4, 10);
+  let nextOwl = now + rand(20, 45);
+  let nextMoo = now + rand(35, 70);
 
   const tick = () => {
     const horizon = ac.currentTime + 1;
@@ -313,15 +313,15 @@ function farm(ac: AudioContext, out: AudioNode) {
     if (nextBaa < horizon) {
       baa(ac, sheepBus, nextBaa, sheepPitch());
       if (Math.random() < 0.35) baa(ac, sheepBus, nextBaa + rand(1.6, 2.6), sheepPitch()); // an answer
-      nextBaa += rand(28, 70);
+      nextBaa += rand(14, 35);
     }
     if (nextOwl < horizon) {
       owl(ac, owlBus, nextOwl);
-      nextOwl += rand(90, 200);
+      nextOwl += rand(45, 100);
     }
     if (nextMoo < horizon) {
       moo(ac, cowBus, nextMoo);
-      nextMoo += rand(120, 260);
+      nextMoo += rand(60, 130);
     }
   };
   tick();

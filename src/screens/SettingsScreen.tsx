@@ -7,7 +7,7 @@ import { ambient } from '../audio/ambient';
 const SOUNDS: { id: SoundMode; label: string }[] = [
   { id: 'off', label: 'Off' },
   { id: 'wind', label: 'Wind' },
-  { id: 'dreamy', label: 'Dreamy' },
+  { id: 'farm', label: 'Farm' },
   { id: 'lullaby', label: 'Lullaby' },
 ];
 const DIM_OPTIONS = [0, 1, 3, 5, 10];

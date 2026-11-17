@@ -114,39 +114,199 @@ function musicBox(ac: AudioContext, out: AudioNode) {
   };
 }
 
+const rand = (min: number, max: number) => min + Math.random() * (max - min);
+
+// A sheep's "baa": a buzzy voice through vowel formants, with a little bleat flutter.
+function baa(ac: AudioContext, out: AudioNode, when: number, pitch: number) {
+  const dur = rand(0.8, 1.2);
+  const end = when + dur;
+  const voice = ac.createOscillator();
+  voice.type = 'sawtooth';
+  voice.frequency.setValueAtTime(pitch * 1.1, when);
+  voice.frequency.linearRampToValueAtTime(pitch, when + 0.15);
+  voice.frequency.linearRampToValueAtTime(pitch * 0.9, end);
+
+  const flutter = ac.createGain();
+  flutter.gain.value = 0.7;
+  const flutterLfo = ac.createOscillator();
+  flutterLfo.frequency.value = rand(9, 12);
+  const flutterAmt = ac.createGain();
+  flutterAmt.gain.value = 0.3;
+  flutterLfo.connect(flutterAmt).connect(flutter.gain);
+
+  const env = ac.createGain();
+  env.gain.setValueAtTime(0, when);
+  env.gain.linearRampToValueAtTime(1, when + 0.08);
+  env.gain.setValueAtTime(1, end - 0.3);
+  env.gain.linearRampToValueAtTime(0, end);
+  env.connect(out);
+
+  voice.connect(flutter);
+  [[750, 6, 1], [1250, 8, 0.6], [2600, 10, 0.2]].forEach(([freq, q, gain]) => {
+    const bp = ac.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = freq;
+    bp.Q.value = q;
+    const g = ac.createGain();
+    g.gain.value = gain;
+    flutter.connect(bp).connect(g).connect(env);
+  });
+
+  [voice, flutterLfo].forEach((n) => {
+    n.start(when);
+    n.stop(end + 0.05);
+  });
+}
+
+// A soft "hoo-hoo" from somewhere in the trees.
+function owl(ac: AudioContext, out: AudioNode, when: number) {
+  [[0, 0.35], [0.5, 0.7]].forEach(([offset, len]) => {
+    const t = when + offset;
+    const osc = ac.createOscillator();
+    osc.frequency.setValueAtTime(390, t);
+    osc.frequency.linearRampToValueAtTime(350, t + len);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(1, t + 0.08);
+    g.gain.linearRampToValueAtTime(0, t + len);
+    osc.connect(g).connect(out);
+    osc.start(t);
+    osc.stop(t + len + 0.05);
+  });
+}
+
+// A faraway "mmm-ooo": low voice with a filter that opens like a mouth.
+function moo(ac: AudioContext, out: AudioNode, when: number) {
+  const dur = rand(1.6, 2.2);
+  const voice = ac.createOscillator();
+  voice.type = 'sawtooth';
+  voice.frequency.setValueAtTime(105, when);
+  voice.frequency.linearRampToValueAtTime(135, when + dur * 0.35);
+  voice.frequency.linearRampToValueAtTime(95, when + dur);
+  const mouth = ac.createBiquadFilter();
+  mouth.type = 'lowpass';
+  mouth.Q.value = 4;
+  mouth.frequency.setValueAtTime(250, when);
+  mouth.frequency.linearRampToValueAtTime(800, when + dur * 0.4);
+  mouth.frequency.linearRampToValueAtTime(350, when + dur);
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0, when);
+  g.gain.linearRampToValueAtTime(1, when + 0.25);
+  g.gain.setValueAtTime(1, when + dur - 0.5);
+  g.gain.linearRampToValueAtTime(0, when + dur);
+  voice.connect(mouth).connect(g).connect(out);
+  voice.start(when);
+  voice.stop(when + dur + 0.05);
+}
+
+// One cricket chirp: three quick high pulses.
+function chirp(ac: AudioContext, out: AudioNode, when: number, freq: number) {
+  for (let i = 0; i < 3; i++) {
+    const t = when + i * 0.045;
+    const osc = ac.createOscillator();
+    osc.frequency.value = freq;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(1, t + 0.006);
+    g.gain.linearRampToValueAtTime(0, t + 0.028);
+    osc.connect(g).connect(out);
+    osc.start(t);
+    osc.stop(t + 0.03);
+  }
+}
+
+function farm(ac: AudioContext, out: AudioNode) {
+  // Animals sound far away: softened highs, mostly reverb.
+  const animals = ac.createBiquadFilter();
+  animals.type = 'lowpass';
+  animals.frequency.value = 2200;
+  const dry = ac.createGain();
+  dry.gain.value = 0.35;
+  const wet = ac.createGain();
+  wet.gain.value = 0.6;
+  animals.connect(dry).connect(out);
+  animals.connect(reverb(ac, 3.5)).connect(wet).connect(out);
+
+  const voice = (level: number) => {
+    const g = ac.createGain();
+    g.gain.value = level;
+    g.connect(animals);
+    return g;
+  };
+  const sheepBus = voice(0.5);
+  const owlBus = voice(0.12);
+  const cowBus = voice(0.35);
+
+  const crickets = [
+    { freq: 4300, pan: -0.6, every: 0.95, level: 0.02 },
+    { freq: 4800, pan: 0.4, every: 1.2, level: 0.012 },
+    { freq: 5200, pan: 0.75, every: 1.45, level: 0.007 },
+  ].map((c) => {
+    const panner = ac.createStereoPanner();
+    panner.pan.value = c.pan;
+    const g = ac.createGain();
+    g.gain.value = c.level;
+    g.connect(panner).connect(out);
+    return { ...c, bus: g, panner, next: ac.currentTime + rand(0.2, 1.5) };
+  });
+
+  const now = ac.currentTime;
+  let nextBaa = now + rand(4, 10);
+  let nextOwl = now + rand(20, 45);
+  let nextMoo = now + rand(35, 70);
+
+  const tick = () => {
+    const horizon = ac.currentTime + 1;
+    for (const c of crickets) {
+      while (c.next < horizon) {
+        chirp(ac, c.bus, c.next, c.freq);
+        c.next += c.every * rand(0.92, 1.08) + (Math.random() < 0.06 ? rand(2, 5) : 0); // the odd pause
+      }
+    }
+    if (nextBaa < horizon) {
+      baa(ac, sheepBus, nextBaa, rand(260, 360));
+      if (Math.random() < 0.35) baa(ac, sheepBus, nextBaa + rand(1.6, 2.6), rand(240, 380)); // an answer
+      nextBaa += rand(14, 35);
+    }
+    if (nextOwl < horizon) {
+      owl(ac, owlBus, nextOwl);
+      nextOwl += rand(45, 100);
+    }
+    if (nextMoo < horizon) {
+      moo(ac, cowBus, nextMoo);
+      nextMoo += rand(60, 130);
+    }
+  };
+  tick();
+  const id = window.setInterval(tick, 200);
+  return () => {
+    clearInterval(id);
+    animals.disconnect();
+    dry.disconnect();
+    wet.disconnect();
+    crickets.forEach((c) => c.panner.disconnect());
+  };
+}
+
 function buildLayer(ac: AudioContext, out: AudioNode, mode: SoundMode) {
   const nodes: (AudioScheduledSourceNode)[] = [];
   const cleanups: (() => void)[] = [];
 
   // Wind: brown noise through a slowly breathing low-pass filter.
-  if (mode === 'wind' || mode === 'dreamy') {
+  if (mode === 'wind') {
     const noise = brownNoise(ac);
     const filter = ac.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = 420;
     const windGain = ac.createGain();
-    windGain.gain.value = mode === 'dreamy' ? 0.35 : 0.6;
+    windGain.gain.value = 0.6;
     noise.connect(filter).connect(windGain).connect(out);
     noise.start();
     nodes.push(noise, lfo(ac, 0.05, 160, filter.frequency), lfo(ac, 0.07, 0.2, windGain.gain));
   }
 
-  // Dreamy: a soft, slowly shimmering A-major pad on top.
-  if (mode === 'dreamy') {
-    const padFilter = ac.createBiquadFilter();
-    padFilter.type = 'lowpass';
-    padFilter.frequency.value = 900;
-    padFilter.connect(out);
-    [110, 164.81, 220, 277.18].forEach((freq, i) => {
-      const osc = ac.createOscillator();
-      osc.frequency.value = freq;
-      const g = ac.createGain();
-      g.gain.value = 0.035;
-      osc.connect(g).connect(padFilter);
-      osc.start();
-      nodes.push(osc, lfo(ac, 0.06 + i * 0.023, 0.025, g.gain));
-    });
-  }
+  // Farm: crickets with the odd distant sheep, owl and cow.
+  if (mode === 'farm') cleanups.push(farm(ac, out));
 
   // Lullaby: just the slow music box.
   if (mode === 'lullaby') cleanups.push(musicBox(ac, out));

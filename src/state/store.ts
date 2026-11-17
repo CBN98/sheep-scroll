@@ -5,7 +5,7 @@ import { isLucky, rollBox, type BoxResult } from '../economy/boxes';
 import { RARITY, STARTER_OWNED, STARTER_SKIN, type SeriesId } from '../sheep/skins';
 import { storage } from '../platform/storage';
 
-export type SoundMode = 'off' | 'wind' | 'dreamy' | 'lullaby';
+export type SoundMode = 'off' | 'wind' | 'farm' | 'lullaby';
 
 export interface Settings {
   sound: SoundMode;
@@ -105,11 +105,13 @@ export const useStore = create<State>()(
       storage: createJSONStorage(() => storage),
       merge: (persisted, current) => {
         const p = persisted as Partial<State>;
+        const settings = { ...current.settings, ...p.settings };
+        if ((settings.sound as string) === 'dreamy') settings.sound = 'farm'; // Dreamy was replaced by Farm
         return {
           ...current,
           ...p,
           owned: { ...STARTER_OWNED, ...p.owned }, // starters added later still reach existing players
-          settings: { ...current.settings, ...p.settings },
+          settings,
         };
       },
     },
